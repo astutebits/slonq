@@ -1,0 +1,14 @@
+[package]
+name = "slonq"
+version = "0.0.0"
+edition = "2024"
+description = "A reliable, lightweight PostgreSQL job queue for Rust. Uses FOR UPDATE SKIP LOCKED for atomic, concurrent task distribution without external dependencies."
+license = "MIT"
+
+exclude = [
+  ".gitignore",
+  ".github",
+  "README.md"
+]
+
+[dependencies]
