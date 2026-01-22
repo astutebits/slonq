@@ -23,8 +23,15 @@ jobs:
         with:
           toolchain: stable
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
 
       - name: Run tests
-        run: cargo test --verbose
+        run: |
+          cargo test --verbose
+          cd slonq-python
+          uv run maturin develop
+          uv run pytest
