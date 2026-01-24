@@ -24,8 +24,6 @@ SCHEMA_SQL = """
 
         CREATE INDEX idx_jobs_visible_status ON jobs (visible_at, status)
         WHERE status IN ('pending', 'in_progress');
-
-        CREATE EXTENSION IF NOT EXISTS pgcrypto;
 """
 
 def parse_rfc3339(s):
