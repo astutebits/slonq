@@ -1,0 +1,55 @@
+{
+  "name": "@chmodas/slonq",
+  "version": "0.0.0",
+  "description": "A reliable, lightweight PostgreSQL job queue. Uses FOR UPDATE SKIP LOCKED for atomic, concurrent task distribution without external dependencies.",
+  "license": "MIT",
+  "author": "Borislav Borisov <chmodas@astutebits.com>",
+  "homepage": "https://github.com/chmodas/slonq",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chmodas/slonq.git"
+  },
+  "bugs": {
+    "url": "https://github.com/chmodas/slonq/issues"
+  },
+  "keywords": ["postgres", "postgresql", "queue", "job-queue", "rust", "neon", "skip-locked"],
+  "type": "module",
+  "engines": { "node": ">=18.17" },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "scripts": {
+    "build:rust": "cargo build --release -p slonq-js",
+    "build:ts": "tsc -p tsconfig.json",
+    "build:copy-artifact": "node scripts/copy-artifact.mjs",
+    "build": "npm run build:rust && npm run build:copy-artifact && npm run build:ts",
+    "test": "node --test --import tsx test/slonq.test.ts"
+  },
+  "optionalDependencies": {
+    "@chmodas/slonq-darwin-arm64": "0.0.0",
+    "@chmodas/slonq-darwin-x64": "0.0.0",
+    "@chmodas/slonq-linux-x64-gnu": "0.0.0",
+    "@chmodas/slonq-linux-arm64-gnu": "0.0.0",
+    "@chmodas/slonq-linux-x64-musl": "0.0.0",
+    "@chmodas/slonq-linux-arm64-musl": "0.0.0",
+    "@chmodas/slonq-win32-x64-msvc": "0.0.0",
+    "@chmodas/slonq-win32-arm64-msvc": "0.0.0"
+  },
+  "dependencies": {
+    "detect-libc": "^2.0.3"
+  },
+  "devDependencies": {
+    "@testcontainers/postgresql": "^10.13.0",
+    "@types/node": "^20.14.0",
+    "@types/pg": "^8.11.0",
+    "pg": "^8.13.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0"
+  }
+}

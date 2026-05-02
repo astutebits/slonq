@@ -1,3 +1,3 @@
 [workspace]
 resolver = "2"
-members = ["slonq-core", "slonq-python"]
+members = ["slonq-core", "slonq-js", "slonq-python"]
