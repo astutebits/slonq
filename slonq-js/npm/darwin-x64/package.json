@@ -1,0 +1,10 @@
+{
+  "name": "@chmodas/slonq-darwin-x64",
+  "version": "0.0.0",
+  "description": "macOS x64 native binary for slonq.",
+  "license": "MIT",
+  "os": ["darwin"],
+  "cpu": ["x64"],
+  "main": "index.node",
+  "files": ["index.node"]
+}

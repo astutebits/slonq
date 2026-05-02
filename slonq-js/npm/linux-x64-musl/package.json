@@ -1,0 +1,11 @@
+{
+  "name": "@chmodas/slonq-linux-x64-musl",
+  "version": "0.0.0",
+  "description": "Linux x64 (musl) native binary for slonq.",
+  "license": "MIT",
+  "os": ["linux"],
+  "cpu": ["x64"],
+  "libc": ["musl"],
+  "main": "index.node",
+  "files": ["index.node"]
+}

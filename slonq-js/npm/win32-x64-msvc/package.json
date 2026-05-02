@@ -1,0 +1,10 @@
+{
+  "name": "@chmodas/slonq-win32-x64-msvc",
+  "version": "0.0.0",
+  "description": "Windows x64 (msvc) native binary for slonq.",
+  "license": "MIT",
+  "os": ["win32"],
+  "cpu": ["x64"],
+  "main": "index.node",
+  "files": ["index.node"]
+}

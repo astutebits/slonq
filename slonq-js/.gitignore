@@ -1,0 +1,9 @@
+target/
+dist/
+node_modules/
+index.node
+npm/*/index.node
+*.log
+.DS_Store
+.idea/
+.vscode/
