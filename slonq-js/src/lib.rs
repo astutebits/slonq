@@ -27,10 +27,7 @@ fn status_str(status: JobStatus) -> &'static str {
     }
 }
 
-fn job_to_object<'cx, C: Context<'cx>>(
-    cx: &mut C,
-    job: &Job,
-) -> JsResult<'cx, JsObject> {
+fn job_to_object<'cx, C: Context<'cx>>(cx: &mut C, job: &Job) -> JsResult<'cx, JsObject> {
     let obj = cx.empty_object();
 
     let id = cx.number(job.id as f64);
@@ -42,8 +39,8 @@ fn job_to_object<'cx, C: Context<'cx>>(
     let status = cx.string(status_str(job.status));
     obj.set(cx, "status", status)?;
 
-    let payload_str = serde_json::to_string(&job.payload)
-        .or_else(|e| cx.throw_error(e.to_string()))?;
+    let payload_str =
+        serde_json::to_string(&job.payload).or_else(|e| cx.throw_error(e.to_string()))?;
     let payload = cx.string(&payload_str);
     obj.set(cx, "payloadJson", payload)?;
 
@@ -64,10 +61,7 @@ fn job_to_object<'cx, C: Context<'cx>>(
     Ok(obj)
 }
 
-fn jobs_to_array<'cx, C: Context<'cx>>(
-    cx: &mut C,
-    jobs: &[Job],
-) -> JsResult<'cx, JsArray> {
+fn jobs_to_array<'cx, C: Context<'cx>>(cx: &mut C, jobs: &[Job]) -> JsResult<'cx, JsArray> {
     let arr = cx.empty_array();
     for (i, job) in jobs.iter().enumerate() {
         let obj = job_to_object(cx, job)?;
@@ -206,7 +200,8 @@ fn pgqueue_nack(mut cx: FunctionContext) -> JsResult<JsPromise> {
     let lease = extract_lease(&mut cx, lease_value)?;
     let max_attempts = cx.argument::<JsNumber>(2)?.value(&mut cx) as i32;
     let delay_arg = cx.argument::<JsValue>(3)?;
-    let delay = if delay_arg.is_a::<JsNull, _>(&mut cx) || delay_arg.is_a::<JsUndefined, _>(&mut cx) {
+    let delay = if delay_arg.is_a::<JsNull, _>(&mut cx) || delay_arg.is_a::<JsUndefined, _>(&mut cx)
+    {
         None
     } else {
         let secs = delay_arg
