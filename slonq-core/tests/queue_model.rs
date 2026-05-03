@@ -127,16 +127,15 @@ impl QueueModel {
 
     fn reap_exhausted(&self, st: &mut State) {
         for job_opt in &mut st.jobs {
-            if let Some(job) = job_opt {
-                if job.status == Status::InProgress
-                    && job.visible_at <= st.now
-                    && job.attempt_count >= self.max_attempts
-                {
-                    job.status = Status::Failed;
-                    job.failed_attempt = Some(job.attempt_count);
-                    job.lease_id = None;
-                    job.leased_by = None;
-                }
+            if let Some(job) = job_opt
+                && job.status == Status::InProgress
+                && job.visible_at <= st.now
+                && job.attempt_count >= self.max_attempts
+            {
+                job.status = Status::Failed;
+                job.failed_attempt = Some(job.attempt_count);
+                job.lease_id = None;
+                job.leased_by = None;
             }
         }
     }
@@ -438,10 +437,10 @@ fn prop_failed_attempt_matches(_: &QueueModel, st: &State) -> bool {
 fn prop_unique_active_lease_ids(_: &QueueModel, st: &State) -> bool {
     let mut seen = HashSet::new();
     for job in st.jobs.iter().flatten() {
-        if let Some(l) = job.lease_id {
-            if !seen.insert(l) {
-                return false;
-            }
+        if let Some(l) = job.lease_id
+            && !seen.insert(l)
+        {
+            return false;
         }
     }
     true
@@ -457,12 +456,13 @@ fn prop_no_two_current_owners(_: &QueueModel, st: &State) -> bool {
         let Some(cur) = job.lease_id else { continue };
         let mut owners = 0;
         for w in &st.workers {
-            if let Some(mem) = w.held {
-                if mem.job as usize == jidx && mem.lease_id == cur {
-                    owners += 1;
-                    if owners > 1 {
-                        return false;
-                    }
+            if let Some(mem) = w.held
+                && mem.job as usize == jidx
+                && mem.lease_id == cur
+            {
+                owners += 1;
+                if owners > 1 {
+                    return false;
                 }
             }
         }

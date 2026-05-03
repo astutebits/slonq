@@ -1,0 +1,362 @@
+name: JavaScript
+
+on:
+  push:
+    branches: [trunk]
+    tags: ['v*']
+    paths:
+      - 'slonq-js/**'
+      - 'slonq-core/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/javascript.yml'
+  pull_request:
+    branches: [trunk]
+    paths:
+      - 'slonq-js/**'
+      - 'slonq-core/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/javascript.yml'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g. 0.1.0). Required when releasing via dispatch (no tag).'
+        required: false
+        default: ''
+
+env:
+  CARGO_TERM_COLOR: always
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: slonq-js/package-lock.json
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9
+        with:
+          toolchain: stable
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+
+      - name: npm ci + build + test
+        working-directory: slonq-js
+        # Integration tests use testcontainers + postgres:16-alpine; Docker is
+        # pre-installed on ubuntu-latest runners.
+        run: |
+          npm install
+          npm ci
+          npm run build
+          npm test
+
+  build:
+    # Build matrix runs on every trigger (PR included) so we catch
+    # platform-specific failures before release. The `.node` artifacts are
+    # only uploaded on push/dispatch — see the `if:` on the upload step below.
+    name: Build native (${{ matrix.platform.triple }})
+    runs-on: ${{ matrix.platform.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - triple: darwin-arm64
+            runner: macos-latest
+            target: aarch64-apple-darwin
+            zigbuild: false
+            artifact: libslonq_js.dylib
+          - triple: darwin-x64
+            runner: macos-15-intel
+            target: x86_64-apple-darwin
+            zigbuild: false
+            artifact: libslonq_js.dylib
+          - triple: linux-x64-gnu
+            runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            zigbuild: false
+            artifact: libslonq_js.so
+          - triple: linux-arm64-gnu
+            runner: ubuntu-22.04
+            target: aarch64-unknown-linux-gnu
+            zigbuild: true
+            artifact: libslonq_js.so
+          - triple: linux-x64-musl
+            runner: ubuntu-22.04
+            target: x86_64-unknown-linux-musl
+            zigbuild: true
+            artifact: libslonq_js.so
+          - triple: linux-arm64-musl
+            runner: ubuntu-22.04
+            target: aarch64-unknown-linux-musl
+            zigbuild: true
+            artifact: libslonq_js.so
+          - triple: win32-x64-msvc
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+            zigbuild: false
+            artifact: slonq_js.dll
+          - triple: win32-arm64-msvc
+            runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            zigbuild: false
+            artifact: slonq_js.dll
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9
+        with:
+          toolchain: stable
+          targets: ${{ matrix.platform.target }}
+
+      - if: matrix.platform.zigbuild
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # 2.2.1
+        with:
+          version: 0.16.0
+
+      - if: matrix.platform.zigbuild
+        run: cargo install --locked cargo-zigbuild
+
+      - name: Build (cargo)
+        if: ${{ !matrix.platform.zigbuild }}
+        run: cargo build --release -p slonq-js --target ${{ matrix.platform.target }}
+
+      - name: Build (cargo-zigbuild)
+        if: matrix.platform.zigbuild
+        env:
+          # musl targets default to static-CRT linking, which forbids cdylib.
+          # -C target-feature=-crt-static switches musl over to dynamic libc
+          # so the `.so` can actually be produced. It's a no-op on the gnu
+          # cross targets in this matrix (gnu uses dynamic libc by default).
+          RUSTFLAGS: '-C target-feature=-crt-static'
+        run: cargo zigbuild --release -p slonq-js --target ${{ matrix.platform.target }}
+
+      - name: Stage artifact
+        run: |
+          mkdir -p slonq-js/npm/${{ matrix.platform.triple }}
+          cp target/${{ matrix.platform.target }}/release/${{ matrix.platform.artifact }} \
+             slonq-js/npm/${{ matrix.platform.triple }}/index.node
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+        with:
+          name: prebuilt-${{ matrix.platform.triple }}
+          path: slonq-js/npm/${{ matrix.platform.triple }}
+          if-no-files-found: error
+
+  ts-build:
+    name: Build TypeScript surface
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: slonq-js/package-lock.json
+
+      - name: npm ci + build:ts
+        working-directory: slonq-js
+        run: |
+          npm install
+          npm ci
+          npm run build:ts
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+        with:
+          name: ts-dist
+          path: slonq-js/dist
+          if-no-files-found: error
+
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    # `test` is deliberately *not* in needs: it's the PR gate; the matrix builds
+    # are the release gate. Tag-time Docker flakes shouldn't block a release that
+    # already passed CI on PR.
+    needs: [build, ts-build]
+    if: ${{ startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' }}
+    permissions:
+      id-token: write
+      contents: read
+      attestations: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      # npm Trusted Publishing requires npm CLI >= 11.5.1, which is newer
+      # than what setup-node ships with Node 20 (npm 10.x). Upgrade explicitly.
+      # See https://docs.npmjs.com/trusted-publisher
+      - name: Upgrade npm for trusted publishing
+        run: npm install -g npm@latest
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: artifacts
+
+      - name: Stage prebuilt subpackages
+        run: |
+          for d in artifacts/prebuilt-*; do
+            triple=${d#artifacts/prebuilt-}
+            mkdir -p slonq-js/npm/$triple
+            cp -f $d/index.node slonq-js/npm/$triple/index.node
+          done
+
+      - name: Stage main package dist/
+        run: |
+          rm -rf slonq-js/dist
+          cp -r artifacts/ts-dist slonq-js/dist
+
+      - name: Resolve publish version
+        id: version
+        run: |
+          if [ "${GITHUB_REF#refs/tags/}" != "$GITHUB_REF" ]; then
+            version="${GITHUB_REF#refs/tags/}"
+            version="${version#v}"
+          else
+            version="${{ inputs.version }}"
+          fi
+          if [ -z "$version" ]; then
+            echo "::error::No version available. Push a tag (e.g. v0.1.0) or set inputs.version."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Publishing version: $version"
+
+      - name: Set package versions
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          for d in slonq-js/npm/*/; do
+            (cd "$d" && npm version --no-git-tag-version --allow-same-version "$VERSION")
+          done
+          (cd slonq-js && npm version --no-git-tag-version --allow-same-version "$VERSION")
+          node -e "
+            const fs = require('fs');
+            const path = 'slonq-js/package.json';
+            const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
+            const v = process.env.VERSION;
+            for (const dep of Object.keys(pkg.optionalDependencies || {})) {
+              pkg.optionalDependencies[dep] = v;
+            }
+            fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
+          "
+
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-path: |
+            slonq-js/npm/*/index.node
+            slonq-js/dist/**/*
+
+      # Authentication is via npm Trusted Publishing (OIDC). The id-token: write
+      # permission above + --provenance + a Trusted Publisher configured on
+      # npmjs.com (linking each `@chmodas/slonq*` package to this repo + this
+      # workflow file) is what authorises the publish. No NPM_TOKEN.
+      #
+      # Tolerate EPUBLISHCONFLICT (already-published version) so a re-run after
+      # a partial-failure release tag picks up where it left off.
+      - name: Publish prebuilt subpackages to npm
+        run: |
+          publish_or_skip() {
+            local dir="$1"
+            local out
+            if out=$(cd "$dir" && npm publish --access public --provenance --ignore-scripts 2>&1); then
+              echo "$out"
+            else
+              echo "$out"
+              if echo "$out" | grep -qiE 'EPUBLISHCONFLICT|cannot publish over the previously published versions'; then
+                echo "::notice::version already published; continuing"
+                return 0
+              fi
+              return 1
+            fi
+          }
+          for d in slonq-js/npm/*/; do
+            echo "Publishing $d"
+            publish_or_skip "$d"
+          done
+
+      - name: Wait for npm registry to index subpackages
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        # 60 retries × 5s = 5 minutes. Generous to handle registry propagation
+        # under load and avoid leaving the main package failed-to-resolve.
+        run: |
+          for d in slonq-js/npm/*/; do
+            name=$(node -p "require('./$d/package.json').name")
+            echo "Waiting for $name@$VERSION to be queryable..."
+            for i in $(seq 1 60); do
+              if npm view "$name@$VERSION" version >/dev/null 2>&1; then
+                echo "  $name@$VERSION available."
+                break
+              fi
+              if [ "$i" -eq 60 ]; then
+                echo "::error::$name@$VERSION not visible on registry after 5 minutes."
+                exit 1
+              fi
+              sleep 5
+            done
+          done
+
+      - name: Publish main package to npm
+        working-directory: slonq-js
+        run: |
+          if out=$(npm publish --access public --provenance --ignore-scripts 2>&1); then
+            echo "$out"
+          else
+            echo "$out"
+            if echo "$out" | grep -qiE 'EPUBLISHCONFLICT|cannot publish over the previously published versions'; then
+              echo "::notice::main package version already published; continuing"
+              exit 0
+            fi
+            exit 1
+          fi
+
+  ci-passed:
+    name: CI passed
+    runs-on: ubuntu-latest
+    needs: [test, build, ts-build]
+    if: always()
+    steps:
+      - name: Verify prerequisite jobs
+        run: |
+          fail=0
+          for r in "${{ needs.test.result }}" "${{ needs.build.result }}" "${{ needs.ts-build.result }}"; do
+            case "$r" in
+              success|skipped) ;;
+              *) echo "::error::prerequisite job result: $r"; fail=1 ;;
+            esac
+          done
+          exit $fail

@@ -6,7 +6,7 @@ use testcontainers_modules::postgres::Postgres;
 use tokio_postgres::NoTls;
 
 /// The SQL schema required to initialise the `jobs` table and related types.
-pub const SCHEMA_SQL: &'static str = r#"
+pub const SCHEMA_SQL: &str = r#"
         CREATE TYPE job_status AS ENUM ('pending', 'in_progress', 'done', 'failed');
 
         CREATE TABLE jobs (
